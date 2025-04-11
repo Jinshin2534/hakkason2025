@@ -1,14 +1,247 @@
 <!DOCTYPE html>
-<html>
-    <head>
-        <meta charset="utf-8">
-        <title></title>
-        <link rel="stylesheet" href="">
-    </head>
-    <body>
-        <a href="chi-chan67.html">chi-chan</a><br>
-        <a href="jinshin.html">jinshin</a><br>
-        <a href="kmc118.html">kmc118</a><br>
-        <a href="kokoa.html">kokoa</a><br>
-    </body>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>茶っとーく</title>
+  <style>
+    body {
+      font-family: sans-serif;
+      margin: 0;
+      padding: 0;
+      background: #f0f4c3;
+    }
+    #body {
+      padding: 1em;
+    }
+    #view {
+      padding-bottom: 6em;
+    }
+    .assistant {
+      border: none;
+      border-radius: .5em;
+      padding: 1em;
+      margin: 1em 0;
+      white-space: pre-wrap;
+      background: #fff176;
+      font-size: 2em;
+      line-height: 1.5em;
+    }
+    #bottom {
+      display: none;
+    }
+    #summary {
+      background: #e3f2fd;
+      padding: 1em;
+      margin: 1em;
+      border-radius: .5em;
+      font-size: 1em;
+      white-space: pre-wrap;
+    }
+    #download, #pdf {
+      position: fixed;
+      bottom: 1em;
+      right: 1em;
+      padding: .5em 1em;
+      font-size: 1em;
+      margin-left: 0.5em;
+    }
+  </style>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+</head>
+<body>
+  <div id="body">
+    <h1 style="font-size: 2em;">茶っとーく</h1>
+    <div id="view"></div>
+    <div id="summary">【生活情報まとめ】
+（ここに会話から抽出された食事・睡眠・薬・体調・希望の情報が表示されます）
+    </div>
+    <button id="download">記録を保存</button>
+    <button id="pdf">PDF作成</button>
+  </div>
+
+  <script type="module">
+    import { fetchJSON } from "https://js.sabae.cc/fetchJSON.js";
+    import { sleep } from "https://js.sabae.cc/sleep.js";
+
+    speechSynthesis.getVoices(); // 音声初期化
+
+    const speak = (text) => {
+      speechSynthesis.cancel();
+      const voices = speechSynthesis.getVoices();
+      const jpVoice = voices.find(v => v.lang === "ja-JP") || voices[0];
+      const uttr = new SpeechSynthesisUtterance(text);
+      uttr.lang = "ja-JP";
+      uttr.voice = jpVoice;
+      uttr.pitch = 1.1;
+      uttr.rate = 1.0;
+      speechSynthesis.speak(uttr);
+    };
+
+    const systemcontent = `あなたは「茶々丸」という名前の会話AIです。参加者の名前や役割を名乗ることなく、茶々丸として、やさしく穏やかに質問に答えてください。
+お年寄りが安心して話せるように、親しみやすく、共感のある受け答えを意識してください。
+絶対に「参加者」や「誰か」などの話者ラベルを真似したり、名乗ったりしないでください。
+すべての返答は、茶々丸として、ひらがなでおだやかに行ってください。`;
+
+    const maxqlen = 140;
+    const maxqn = 10;
+    const logs = [];
+    const summaryData = {
+      食事: [],
+      睡眠: [],
+      薬: [],
+      体調: [],
+      希望: []
+    };
+
+    const updateSummary = (text) => {
+      if (text.includes("ごはん") || text.includes("たべ")) summaryData.食事.push(text);
+      if (text.includes("ねむ") || text.includes("よる")) summaryData.睡眠.push(text);
+      if (text.includes("くすり") || text.includes("のみ")) summaryData.薬.push(text);
+      if (text.includes("いたい") || text.includes("けんこう")) summaryData.体調.push(text);
+      if (text.includes("したい") || text.includes("ゆめ")) summaryData.希望.push(text);
+
+      const sumtxt = Object.entries(summaryData)
+        .map(([k, v]) => `【${k}】\n${v.join("\n") || "（まだありません）"}`)
+        .join("\n\n");
+      document.getElementById("summary").textContent = `【生活情報まとめ】\n` + sumtxt;
+    };
+
+    const chat = async (messages) => {
+      const res = await fetchJSON("https://aichat.sabae.cc/api/conversation", messages);
+      const div2 = document.createElement("div");
+      div2.className = "assistant";
+      const ss = res.split("\n\n");
+      div2.textContent = ss[0];
+      view.appendChild(div2);
+      speak(ss[0]);
+      view.scrollIntoView({ block: "end", behavior: "smooth" });
+      logs.push(ss[0]);
+      updateSummary(ss[0]);
+
+      for (let i = 1; i < ss.length; i++) {
+        await sleep(1500);
+        div2.textContent += "\n\n" + ss[i];
+        speak(ss[i]);
+        view.scrollIntoView({ block: "end", behavior: "smooth" });
+        logs.push(ss[i]);
+        updateSummary(ss[i]);
+      }
+    };
+
+    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+    if (SpeechRecognition) {
+      const recognition = new SpeechRecognition();
+      recognition.lang = "ja-JP";
+      recognition.interimResults = false;
+      recognition.continuous = true;
+
+      recognition.onresult = (event) => {
+        const text = event.results[event.results.length - 1][0].transcript;
+        const messages = [];
+        let user = true;
+        for (let i = Math.max(view.children.length - maxqn + 1, 0); i < view.children.length; i++) {
+          const div = view.children[i];
+          const content = div.textContent;
+          messages.push({ role: user ? "user" : "assistant", content });
+          user = !user;
+        }
+        messages.unshift({ role: "system", content: systemcontent });
+        messages.push({ role: "user", content: text });
+        chat(messages);
+      };
+
+      recognition.onerror = (event) => {
+        console.error("音声認識エラー:", event.error);
+        recognition.stop();
+        setTimeout(() => recognition.start(), 1000);
+      };
+
+      recognition.onend = () => {
+        recognition.start();
+      };
+
+      recognition.start();
+    }
+
+    document.getElementById("download").onclick = () => {
+      const blob = new Blob([logs.join("\n\n")], { type: "text/plain" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = "chat-summary.txt";
+      a.click();
+    };
+
+    document.getElementById("pdf").onclick = () => {
+      const { jsPDF } = window.jspdf;
+      const doc = new jsPDF();
+      let y = 10;
+      doc.setFontSize(14);
+      doc.text("茶っとーく 医師向け記録", 10, y);
+      y += 10;
+      const now = new Date().toLocaleString();
+      doc.setFontSize(10);
+      doc.text(`作成日時: ${now}`, 10, y);
+      y += 10;
+      const categories = ["食事", "睡眠", "薬", "体調", "希望"];
+      categories.forEach(category => {
+        const items = summaryData[category];
+        if (y > 270) { doc.addPage(); y = 10; }
+        doc.setFontSize(12);
+        doc.text(`【${category}】`, 10, y);
+        y += 8;
+        if (items.length === 0) {
+          doc.setFontSize(10);
+          doc.text("（情報なし）", 12, y);
+          y += 8;
+        } else {
+          items.forEach(item => {
+            const lines = doc.splitTextToSize(item, 180);
+            lines.forEach(line => {
+              if (y > 270) { doc.addPage(); y = 10; }
+              doc.setFontSize(10);
+              doc.text(`- ${line}`, 12, y);
+              y += 6;
+            });
+            y += 2;
+          });
+        }
+        y += 4;
+      });
+      const lifestyle = logs.filter(t => t.includes("さんぽ") || t.includes("てれび") || t.includes("ともだち") || t.includes("いえ") || t.includes("しゅみ") || t.includes("どうすご"));
+      if (y > 270) { doc.addPage(); y = 10; }
+      doc.setFontSize(12);
+      doc.text("【生活の過ごし方】", 10, y);
+      y += 8;
+      if (lifestyle.length === 0) {
+        doc.setFontSize(10);
+        doc.text("（情報なし）", 12, y);
+        y += 8;
+      } else {
+        lifestyle.forEach(item => {
+          const lines = doc.splitTextToSize(item, 180);
+          lines.forEach(line => {
+            if (y > 270) { doc.addPage(); y = 10; }
+            doc.setFontSize(10);
+            doc.text(`- ${line}`, 12, y);
+            y += 6;
+          });
+          y += 2;
+        });
+      }
+      doc.save("chat-summary-medical.pdf");
+    };
+
+    const firstTalk = async () => {
+      const messages = [
+        { role: "system", content: systemcontent },
+        { role: "user", content: "こんにちは" },
+      ];
+      await chat(messages);
+    };
+
+    await firstTalk();
+  </script>
+</body>
 </html>
