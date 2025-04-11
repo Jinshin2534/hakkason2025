@@ -24,8 +24,8 @@
       margin: 1em 0;
       white-space: pre-wrap;
       background: #fff176;
-      font-size: 2em;
-      line-height: 1.5em;
+      font-size: 3em;
+      line-height: 1.6em;
     }
     #bottom {
       display: none;
@@ -35,10 +35,10 @@
       padding: 1em;
       margin: 1em;
       border-radius: .5em;
-      font-size: 1em;
+      font-size: 1.5em;
       white-space: pre-wrap;
     }
-    #download, #pdf {
+    #download, #pdf, #stop {
       position: fixed;
       bottom: 1em;
       right: 1em;
@@ -46,9 +46,14 @@
       font-size: 1em;
       margin-left: 0.5em;
     }
+    #stop {
+      right: 9em;
+      background: #f88;
+      color: white;
+    }
     #startmsg {
       text-align: center;
-      font-size: 1.2em;
+      font-size: 2em;
       padding: 2em;
       color: #666;
     }
@@ -65,6 +70,7 @@
     </div>
     <button id="download">記録を保存</button>
     <button id="pdf">PDF作成</button>
+    <button id="stop">止める</button>
   </div>
 
   <script type="module">
@@ -86,38 +92,46 @@
     };
 
     const systemcontent = `あなたは「茶々丸」という名前の会話AIです。参加者の名前や役割を名乗ることなく、茶々丸として、やさしく穏やかに質問に答えてください。
-お年寄りが安心して話せるように、親しみやすく、共感のある受け答えを意識してください。
+お年寄りが安心して話せるように、親しみやすく、共感のある受け答えを意識してください。一番はじめには「僕は茶々丸だよ！」に続けて短く自己紹介をした後、参加者に名前を聞いて。
 絶対に「参加者」や「誰か」などの話者ラベルを真似したり、名乗ったりしないでください。
-すべての返答は、茶々丸として、ひらがなでおだやかに行ってください。例えば昔のこと嬉しかったり辛かったこと。足や腰がいたい。何の薬のんでる。何もかもデジタル化され取り残されていくのかな。
+🟡 食事に関するやさしい質問
 
-健康に過ごすにはどんなたべものがいいか。
-運動はなにがとか。
-長生きするにはどうしたら。
-こんなことを話しています。
-🍙 食事・生活習慣
-「最近、ごはんはちゃんと美味しく食べられてますか？」
-「朝ごはんは毎日決まってるんですか？」
-「好きなおかずって、今も変わってないですか？」
-「一人で食べるとき、テレビとかつけてますか？」
-😴 睡眠・体の調子
-「夜はぐっすり眠れていますか？」
-「最近、夜中に起きることってありますか？」
-「夢とか見ますか？」
-「朝起きた時、すっきりしてますか？」
-💊 お薬・通院状況
-「お薬、ちゃんと飲めてますか？」
-「時々、飲み忘れたりしませんか？」こんな感じのこともいっぱい聞いてあげて`;
+「最近、ごはん美味しく食べられてますか？」
+「食べる時間って決まってたりします？」
+「好きな食べものとか、最近食べましたか？」
+🔵 睡眠についての自然な話題
 
-    const maxqlen = 140;
-    const maxqn = 10;
+「夜はぐっすり眠れてますか？」
+「朝は何時ごろに目が覚めることが多いですか？」
+「眠る前って、どんなことして過ごしてますか？」
+🔴 薬・服用状況について
+
+「お薬、飲み忘れたりしないようにしてますか？」
+「お薬って、いつ飲むことが多いですか？」
+「飲んでいて気になることとか、ないですか？」
+🟢 体調・変化について
+
+「最近、身体で気になるところってありますか？」
+「痛いとこや、疲れやすいことはあります？」
+「調子のいい日と、ちょっと違う日ってありますか？」
+🟣 希望・今後について
+
+「これからやってみたいことってありますか？」
+「どんなふうに過ごしていけたらいいなぁと思ってますか？」
+「安心して暮らすために、何か気になってることありますか？」
+🟠 日常の過ごし方（生活スタイル）
+
+「最近、楽しかったことってなんですか？」
+「どんなふうに1日を過ごしてることが多いですか？」
+「お友達と話すことってありますか？」
+すべての返答は、茶々丸として、ひらがなでおだやかに行ってください。`;`;
+
     const logs = [];
     const summaryData = {
-      食事: [],
-      睡眠: [],
-      薬: [],
-      体調: [],
-      希望: []
+      食事: [], 睡眠: [], 薬: [], 体調: [], 希望: []
     };
+
+    let recognition = null;
 
     const updateSummary = (text) => {
       if (text.includes("ごはん") || text.includes("たべ")) summaryData.食事.push(text);
@@ -138,9 +152,8 @@
       div2.className = "assistant";
       const ss = res.split("\n\n");
       div2.textContent = ss[0];
-      view.appendChild(div2);
+      document.getElementById("view").appendChild(div2);
       speak(ss[0]);
-      view.scrollIntoView({ block: "end", behavior: "smooth" });
       logs.push(ss[0]);
       updateSummary(ss[0]);
 
@@ -148,7 +161,6 @@
         await sleep(1500);
         div2.textContent += "\n\n" + ss[i];
         speak(ss[i]);
-        view.scrollIntoView({ block: "end", behavior: "smooth" });
         logs.push(ss[i]);
         updateSummary(ss[i]);
       }
@@ -163,23 +175,20 @@
       ];
       await chat(messages);
 
-      const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
-      if (SpeechRecognition) {
-        const recognition = new SpeechRecognition();
+      const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+      if (SR) {
+        recognition = new SR();
         recognition.lang = "ja-JP";
         recognition.interimResults = false;
         recognition.continuous = true;
 
         recognition.onresult = (event) => {
           const text = event.results[event.results.length - 1][0].transcript;
-          const messages = [];
-          let user = true;
-          for (let i = Math.max(view.children.length - maxqn + 1, 0); i < view.children.length; i++) {
-            const div = view.children[i];
-            const content = div.textContent;
-            messages.push({ role: user ? "user" : "assistant", content });
-            user = !user;
-          }
+          const history = Array.from(document.getElementById("view").children).map(d => d.textContent);
+          const messages = history.slice(-10).map((content, i) => ({
+            role: i % 2 === 0 ? "assistant" : "user",
+            content
+          }));
           messages.unshift({ role: "system", content: systemcontent });
           messages.push({ role: "user", content: text });
           chat(messages);
@@ -191,11 +200,16 @@
           setTimeout(() => recognition.start(), 1000);
         };
 
-        recognition.onend = () => {
-          recognition.start();
-        };
+        recognition.onend = () => recognition.start();
 
         recognition.start();
+      }
+    };
+
+    document.getElementById("stop").onclick = () => {
+      if (recognition) {
+        recognition.stop();
+        alert("会話を止めました。");
       }
     };
 
@@ -203,72 +217,76 @@
       startApp();
     }, { once: true });
 
-    document.getElementById("download").onclick = () => {
-      const blob = new Blob([logs.join("\n\n")], { type: "text/plain" });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = "chat-summary.txt";
-      a.click();
-    };
-
     document.getElementById("pdf").onclick = () => {
       const { jsPDF } = window.jspdf;
       const doc = new jsPDF();
       let y = 10;
+
+      // 名前の抽出
+      const nameMatch = logs.find(l => /名前|わたし.*(です|は)/.test(l));
+      let userName = "（名前未確認）";
+      if (nameMatch) {
+        const m = nameMatch.match(/(?:名前は|わたしは|ぼくは|わたしの名前は|ぼくの名前は)?\s*([\p{Script=Hiragana}\p{Script=Katakana}\p{Script=Han}a-zA-Z0-9]+)/u);
+        if (m && m[1]) {
+          userName = m[1] + " さん";
+        }
+      }
+
       doc.setFontSize(14);
-      doc.text("茶っとーく 医師向け記録", 10, y);
+      doc.text(`茶っとーく 医師向け記録（${userName}）`, 10, y);
       y += 10;
-      const now = new Date().toLocaleString();
       doc.setFontSize(10);
-      doc.text(`作成日時: ${now}`, 10, y);
+      doc.text(`作成日時: ${new Date().toLocaleString()}`, 10, y);
       y += 10;
-      const categories = ["食事", "睡眠", "薬", "体調", "希望"];
-      categories.forEach(category => {
-        const items = summaryData[category];
+
+      for (const [key, value] of Object.entries(summaryData)) {
         if (y > 270) { doc.addPage(); y = 10; }
         doc.setFontSize(12);
-        doc.text(`【${category}】`, 10, y);
-        y += 8;
-        if (items.length === 0) {
+        doc.text(`【${key}】`, 10, y); y += 8;
+        if (value.length === 0) {
           doc.setFontSize(10);
-          doc.text("（情報なし）", 12, y);
-          y += 8;
+          doc.text("（情報なし）", 12, y); y += 8;
         } else {
-          items.forEach(item => {
-            const lines = doc.splitTextToSize(item, 180);
+          value.forEach(item => {
+            const lines = doc.splitTextToSize("- " + item, 180);
             lines.forEach(line => {
               if (y > 270) { doc.addPage(); y = 10; }
-              doc.setFontSize(10);
-              doc.text(`- ${line}`, 12, y);
-              y += 6;
+              doc.text(line, 12, y); y += 6;
             });
-            y += 2;
           });
         }
         y += 4;
-      });
+      }
+
       const lifestyle = logs.filter(t => t.includes("さんぽ") || t.includes("てれび") || t.includes("ともだち") || t.includes("いえ") || t.includes("しゅみ") || t.includes("どうすご"));
-      if (y > 270) { doc.addPage(); y = 10; }
-      doc.setFontSize(12);
-      doc.text("【生活の過ごし方】", 10, y);
-      y += 8;
-      if (lifestyle.length === 0) {
-        doc.setFontSize(10);
-        doc.text("（情報なし）", 12, y);
-        y += 8;
-      } else {
+      if (lifestyle.length) {
+        if (y > 270) { doc.addPage(); y = 10; }
+        doc.setFontSize(12);
+        doc.text("【生活の過ごし方】", 10, y); y += 8;
         lifestyle.forEach(item => {
-          const lines = doc.splitTextToSize(item, 180);
+          const lines = doc.splitTextToSize("- " + item, 180);
           lines.forEach(line => {
             if (y > 270) { doc.addPage(); y = 10; }
             doc.setFontSize(10);
-            doc.text(`- ${line}`, 12, y);
-            y += 6;
+            doc.text(line, 12, y); y += 6;
           });
-          y += 2;
         });
+        y += 5;
       }
+
+      doc.setFontSize(12);
+      doc.text("【会話全体記録】", 10, y);
+      y += 8;
+      logs.forEach(entry => {
+        const lines = doc.splitTextToSize(entry, 180);
+        lines.forEach(line => {
+          if (y > 270) { doc.addPage(); y = 10; }
+          doc.setFontSize(10);
+          doc.text(line, 12, y); y += 6;
+        });
+        y += 4;
+      });
+
       doc.save("chat-summary-medical.pdf");
     };
   </script>
