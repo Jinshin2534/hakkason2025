@@ -46,12 +46,19 @@
       font-size: 1em;
       margin-left: 0.5em;
     }
+    #startmsg {
+      text-align: center;
+      font-size: 1.2em;
+      padding: 2em;
+      color: #666;
+    }
   </style>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 </head>
 <body>
   <div id="body">
     <h1 style="font-size: 2em;">茶っとーく</h1>
+    <div id="startmsg">👆 最初に画面をタップして、茶々丸とお話ししましょう</div>
     <div id="view"></div>
     <div id="summary">【生活情報まとめ】
 （ここに会話から抽出された食事・睡眠・薬・体調・希望の情報が表示されます）
@@ -64,7 +71,7 @@
     import { fetchJSON } from "https://js.sabae.cc/fetchJSON.js";
     import { sleep } from "https://js.sabae.cc/sleep.js";
 
-    speechSynthesis.getVoices(); // 音声初期化
+    speechSynthesis.getVoices();
 
     const speak = (text) => {
       speechSynthesis.cancel();
@@ -129,40 +136,54 @@
       }
     };
 
-    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
-    if (SpeechRecognition) {
-      const recognition = new SpeechRecognition();
-      recognition.lang = "ja-JP";
-      recognition.interimResults = false;
-      recognition.continuous = true;
+    const startApp = async () => {
+      document.getElementById("startmsg").style.display = "none";
 
-      recognition.onresult = (event) => {
-        const text = event.results[event.results.length - 1][0].transcript;
-        const messages = [];
-        let user = true;
-        for (let i = Math.max(view.children.length - maxqn + 1, 0); i < view.children.length; i++) {
-          const div = view.children[i];
-          const content = div.textContent;
-          messages.push({ role: user ? "user" : "assistant", content });
-          user = !user;
-        }
-        messages.unshift({ role: "system", content: systemcontent });
-        messages.push({ role: "user", content: text });
-        chat(messages);
-      };
+      const messages = [
+        { role: "system", content: systemcontent },
+        { role: "user", content: "こんにちは" },
+      ];
+      await chat(messages);
 
-      recognition.onerror = (event) => {
-        console.error("音声認識エラー:", event.error);
-        recognition.stop();
-        setTimeout(() => recognition.start(), 1000);
-      };
+      const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+      if (SpeechRecognition) {
+        const recognition = new SpeechRecognition();
+        recognition.lang = "ja-JP";
+        recognition.interimResults = false;
+        recognition.continuous = true;
 
-      recognition.onend = () => {
+        recognition.onresult = (event) => {
+          const text = event.results[event.results.length - 1][0].transcript;
+          const messages = [];
+          let user = true;
+          for (let i = Math.max(view.children.length - maxqn + 1, 0); i < view.children.length; i++) {
+            const div = view.children[i];
+            const content = div.textContent;
+            messages.push({ role: user ? "user" : "assistant", content });
+            user = !user;
+          }
+          messages.unshift({ role: "system", content: systemcontent });
+          messages.push({ role: "user", content: text });
+          chat(messages);
+        };
+
+        recognition.onerror = (event) => {
+          console.error("音声認識エラー:", event.error);
+          recognition.stop();
+          setTimeout(() => recognition.start(), 1000);
+        };
+
+        recognition.onend = () => {
+          recognition.start();
+        };
+
         recognition.start();
-      };
+      }
+    };
 
-      recognition.start();
-    }
+    window.addEventListener("click", () => {
+      startApp();
+    }, { once: true });
 
     document.getElementById("download").onclick = () => {
       const blob = new Blob([logs.join("\n\n")], { type: "text/plain" });
@@ -232,16 +253,6 @@
       }
       doc.save("chat-summary-medical.pdf");
     };
-
-    const firstTalk = async () => {
-      const messages = [
-        { role: "system", content: systemcontent },
-        { role: "user", content: "こんにちは" },
-      ];
-      await chat(messages);
-    };
-
-    await firstTalk();
   </script>
 </body>
 </html>
